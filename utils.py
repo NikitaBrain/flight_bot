@@ -80,8 +80,6 @@ async def get_aircraft_name(aircraft_code: str) -> str:
     aircraft = aircraft_cache.get(aircraft_code.upper(), {})
     return aircraft.get('name', aircraft_code)
 
-<<<<<<< HEAD
-=======
 def format_aviationstack_date(date_str: str) -> str:
     """Форматируем дату из AviationStack в дд.мм.гггг чч:мм"""
     try:
@@ -92,7 +90,6 @@ def format_aviationstack_date(date_str: str) -> str:
     except:
         return date_str
 
->>>>>>> master
 def format_date(date_str: str) -> str:
     """Форматируем дату в дд.мм.гггг чч:мм"""
     try:

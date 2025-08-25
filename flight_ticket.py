@@ -33,6 +33,7 @@ from price_calendar import handle_price_calendar
 from stats import handle_price_stats
 from airline_routes import show_airline_selection, show_airline_routes
 from flight_info import show_flight_info_menu, handle_flight_info_request
+from telegram import ParseMode
 
 # Настройка логгирования
 logging.basicConfig(
@@ -120,7 +121,6 @@ async def show_main_menu(update: Update, text: str = None, is_start: bool = Fals
     keyboard = [
         ["🔍 Дешевые билеты", "📅 Календарь цен"],
         ["📊 Статистика цен", "⭐ Избранное"],
-        ["✈️ Популярные рейсы"]
         ["✈️ Популярные рейсы", "ℹ️ Инфо о рейсе"]
     ]
     reply_markup = ReplyKeyboardMarkup(
@@ -426,7 +426,7 @@ async def perform_search(update, params, is_period=False):
             [InlineKeyboardButton("← Назад", callback_data='back')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        parse_mode=ParseMode.MARKDOWN_V2
+        parse_mode='MarkdownV2'
         
         if hasattr(update, 'message'):
             await update.message.reply_text(message, reply_markup=reply_markup)

@@ -4,14 +4,17 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from config import AVIATIONSTACK_API_KEY, AVIATIONSTACK_FLIGHT_URL
 from utils import format_date
+from favorites import FavoritesManager
+from storage import favorite_storage
 import json
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
 def translate_status(status):
     """Переводит статус рейса на русский"""
     status_translations = {
-        'scheduled': '🔄 Запланирован',
+        'scheduled': '✔️ Запланирован',
         'active': '🛫 В полете',
         'landed': '🛬 Приземлился',
         'cancelled': '❌ Отменен',
@@ -21,11 +24,20 @@ def translate_status(status):
     }
     return status_translations.get(status, f'❓ {status}')
 
-def safe_get(data, key, default='Неизвестно'):
+def safe_get(data, key, default=None):
     """Безопасное получение значения из словаря"""
     if not data or not isinstance(data, dict):
         return default
-    return data.get(key, default)
+    value = data.get(key, default)
+    return value if value not in [None, 'null', 'None', ''] else default
+
+def format_flight_date(date_str):
+    """Форматирует дату в дд.мм.гггг"""
+    try:
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+        return dt.strftime("%d.%m.%Y")
+    except:
+        return date_str
 
 async def show_flight_info_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показывает меню для получения информации о рейсе"""
@@ -42,12 +54,9 @@ async def show_flight_info_menu(update: Update, context: ContextTypes.DEFAULT_TY
     
     instruction_text = (
         "✈️ Получение информации о рейсе\n\n"
-        "Введите номер рейса в формате:\n"
-        "<код авиакомпании><номер рейса>\n\n"
+        "Введите номер рейса:\n"
         "Примеры:\n"
         "SU1234\n"
-        "S7151\n"
-        "U6256\n\n"
         "Я покажу актуальную информацию о рейсе."
     )
     
@@ -82,13 +91,10 @@ async def handle_flight_info_request(update: Update, flight_number: str):
         # Выполняем запрос
         response = requests.get(AVIATIONSTACK_FLIGHT_URL, params=params, timeout=15)
         
-        # Логируем ответ для отладки
-        logger.info(f"AviationStack response status: {response.status_code}")
-        
         try:
             data = response.json()
         except json.JSONDecodeError as e:
-            logger.error(f"JSON decode error: {e}, response text: {response.text}")
+            logger.error(f"JSON decode error: {e}")
             await update.message.reply_text(
                 "❌ Ошибка при обработке ответа от сервера авиаданных.",
                 reply_markup=InlineKeyboardMarkup([
@@ -98,35 +104,9 @@ async def handle_flight_info_request(update: Update, flight_number: str):
             )
             return
         
-        # Проверяем структуру ответа
-        if not data or not isinstance(data, dict):
-            logger.error(f"Invalid response format: {data}")
-            await update.message.reply_text(
-                "❌ Неверный формат ответа от сервера авиаданных.",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("← Попробовать снова", callback_data='flight_info')],
-                    [InlineKeyboardButton("← Назад", callback_data='back')]
-                ])
-            )
-            return
-        
-        # Проверяем наличие ошибок в ответе
-        if 'error' in data:
-            error_info = data.get('error', {})
-            error_message = error_info.get('message', 'Неизвестная ошибка')
-            logger.error(f"AviationStack error: {error_message}")
-            await update.message.reply_text(
-                f"❌ Ошибка API: {error_message}",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("← Попробовать снова", callback_data='flight_info')],
-                    [InlineKeyboardButton("← Назад", callback_data='back')]
-                ])
-            )
-            return
-        
         # Проверяем наличие данных о рейсах
         flight_data_list = data.get('data', [])
-        if not flight_data_list or not isinstance(flight_data_list, list):
+        if not flight_data_list:
             await update.message.reply_text(
                 f"❌ Информация о рейсе {flight_number} не найдена.\n"
                 "Проверьте правильность номера рейса.",
@@ -140,83 +120,121 @@ async def handle_flight_info_request(update: Update, flight_number: str):
         flight_data = flight_data_list[0]
         
         # Формируем сообщение с информацией о рейсе
-        message = f"✈️ Детальная информация о рейсе {flight_number}:\n\n"
+        message = f"✈️ Информация о рейсе {flight_number}:\n\n"
         
         # Основная информация
         departure = flight_data.get('departure', {}) or {}
         arrival = flight_data.get('arrival', {}) or {}
         airline = flight_data.get('airline', {}) or {}
         flight_info = flight_data.get('flight', {}) or {}
-        aircraft = flight_data.get('aircraft', {}) or {}
-        live_data = flight_data.get('live', {}) or {}
         
         # 📅 Дата и статус рейса
-        message += f"📅 Дата рейса: {flight_data.get('flight_date', 'Неизвестно')}\n"
-        status = flight_data.get('flight_status', 'unknown')
+        flight_date = safe_get(flight_data, 'flight_date')
+        if flight_date:
+            message += f"📅 Дата рейса: {format_flight_date(flight_date)}\n"
+        
+        status = safe_get(flight_data, 'flight_status', 'unknown')
         message += f"📊 Статус: {translate_status(status)}\n\n"
         
-        # 🛫 Информация о вылете
-        message += "🛫 ВЫЛЕТ:\n"
-        message += f"• Аэропорт: {safe_get(departure, 'airport')} ({safe_get(departure, 'iata')})\n"
-        message += f"• Терминал: {safe_get(departure, 'terminal')}\n"
-        message += f"• Гейт: {safe_get(departure, 'gate')}\n"
+        # 🛫 Откуда и куда
+        dep_airport = safe_get(departure, 'airport')
+        dep_iata = safe_get(departure, 'iata')
+        arr_airport = safe_get(arrival, 'airport')
+        arr_iata = safe_get(arrival, 'iata')
         
-        if departure.get('scheduled'):
-            message += f"• Запланировано: {format_date(departure['scheduled'])}\n"
-        if departure.get('estimated'):
-            message += f"• Ожидается: {format_date(departure['estimated'])}\n"
-        if departure.get('actual'):
-            message += f"• Фактически: {format_date(departure['actual'])}\n"
+        message += f"🛫 Откуда: {dep_airport or 'Неизвестно'} ({dep_iata or '?'})\n"
+        message += f"🛬 Куда: {arr_airport or 'Неизвестно'} ({arr_iata or '?'})\n\n"
         
-        delay = departure.get('delay')
-        if delay and int(delay) > 0:
-            message += f"• ⏰ Задержка: {delay} мин\n"
+        # 🕐 Время вылета
+        dep_scheduled = safe_get(departure, 'scheduled')
+        dep_estimated = safe_get(departure, 'estimated')
+        dep_actual = safe_get(departure, 'actual')
         
-        message += "\n"
+        if dep_scheduled:
+            message += f"🕐 Вылет запланирован: {format_date(dep_scheduled)}\n"
+        if dep_estimated and dep_estimated != dep_scheduled:
+            message += f"🕐 Вылет ожидается: {format_date(dep_estimated)}\n"
+        if dep_actual:
+            message += f"🕐 Вылет фактический: {format_date(dep_actual)}\n"
         
-        # 🛬 Информация о прибытии
-        message += "🛬 ПРИБЫТИЕ:\n"
-        message += f"• Аэропорт: {safe_get(arrival, 'airport')} ({safe_get(arrival, 'iata')})\n"
-        message += f"• Терминал: {safe_get(arrival, 'terminal')}\n"
-        message += f"• Гейт: {safe_get(arrival, 'gate')}\n"
-        message += f"• Багаж: {safe_get(arrival, 'baggage')}\n"
-        
-        if arrival.get('scheduled'):
-            message += f"• Запланировано: {format_date(arrival['scheduled'])}\n"
-        if arrival.get('estimated'):
-            message += f"• Ожидается: {format_date(arrival['estimated'])}\n"
-        if arrival.get('actual'):
-            message += f"• Фактически: {format_date(arrival['actual'])}\n"
-        
-        arrival_delay = arrival.get('delay')
-        if arrival_delay and int(arrival_delay or 0) > 0:
-            message += f"• ⏰ Задержка: {arrival_delay} мин\n"
+        # Задержка вылета
+        dep_delay = safe_get(departure, 'delay')
+        if dep_delay and int(dep_delay) > 0:
+            message += f"⏰ Задержка вылета: {dep_delay} мин\n"
         
         message += "\n"
         
-        # ✈️ Информация о рейсе и авиакомпании
-        message += "✈️ ИНФОРМАЦИЯ О РЕЙСЕ:\n"
-        message += f"• Авиакомпания: {safe_get(airline, 'name')} ({safe_get(airline, 'iata')})\n"
-        message += f"• Номер рейса: {safe_get(flight_info, 'number')}\n"
-        message += f"• Код IATA: {safe_get(flight_info, 'iata')}\n"
-        message += f"• Код ICAO: {safe_get(flight_info, 'icao')}\n"
+        # 🕐 Время прибытия
+        arr_scheduled = safe_get(arrival, 'scheduled')
+        arr_estimated = safe_get(arrival, 'estimated')
+        arr_actual = safe_get(arrival, 'actual')
         
-        # 🛩️ Информация о самолете (если доступна)
-        if aircraft:
-            message += f"• Тип ВС: {safe_get(aircraft, 'iata')} ({safe_get(aircraft, 'registration')})\n"
+        if arr_scheduled:
+            message += f"🕐 Прибытие запланировано: {format_date(arr_scheduled)}\n"
+        if arr_estimated and arr_estimated != arr_scheduled:
+            message += f"🕐 Прибытие ожидается: {format_date(arr_estimated)}\n"
+        if arr_actual:
+            message += f"🕐 Прибытие фактическое: {format_date(arr_actual)}\n"
         
-        # 📡 Live данные (если доступны)
-        if live_data:
-            message += "\n📡 ДАННЫЕ В РЕАЛЬНОМ ВРЕМЕНИ:\n"
-            if live_data.get('altitude'):
-                message += f"• Высота: {live_data['altitude']} м\n"
-            if live_data.get('speed'):
-                message += f"• Скорость: {live_data['speed']} км/ч\n"
-            if live_data.get('direction'):
-                message += f"• Направление: {live_data['direction']}°\n"
+        # Задержка прибытия
+        arr_delay = safe_get(arrival, 'delay')
+        if arr_delay and int(arr_delay or 0) > 0:
+            message += f"⏰ Задержка прибытия: {arr_delay} мин\n"
         
-        # Клавиатура для возврата
+        message += "\n"
+        
+        # ✈️ Информация о рейсе
+        airline_name = safe_get(airline, 'name')
+        if airline_name:
+            message += f"🏛️ Авиакомпания: {airline_name}\n"
+        
+        flight_iata = safe_get(flight_info, 'iata')
+        if flight_iata:
+            message += f"🔢 Номер рейса: {flight_iata}\n"
+        
+        # Дополнительная информация (только если не None)
+        dep_terminal = safe_get(departure, 'terminal')
+        if dep_terminal:
+            message += f"📍 Терминал вылета: {dep_terminal}\n"
+        
+        dep_gate = safe_get(departure, 'gate')
+        if dep_gate:
+            message += f"🚪 Гейт вылета: {dep_gate}\n"
+        
+        arr_terminal = safe_get(arrival, 'terminal')
+        if arr_terminal:
+            message += f"📍 Терминал прибытия: {arr_terminal}\n"
+        
+        arr_gate = safe_get(arrival, 'gate')
+        if arr_gate:
+            message += f"🚪 Гейт прибытия: {arr_gate}\n"
+        
+        arr_baggage = safe_get(arrival, 'baggage')
+        if arr_baggage:
+            message += f"🎒 Багаж: {arr_baggage}\n"
+        
+        # Сохраняем данные рейса для возможного добавления в избранное
+        user_id = update.message.from_user.id
+        flight_data_for_favorite = {
+            'flight_number': flight_number,
+            'flight_iata': flight_iata,
+            'airline': airline_name,
+            'departure_airport': dep_airport,
+            'departure_iata': dep_iata,
+            'arrival_airport': arr_airport,
+            'arrival_iata': arr_iata,
+            'flight_date': flight_date,
+            'current_status': status,
+            'scheduled_departure': dep_scheduled,
+            'estimated_departure': dep_estimated
+        }
+        
+        # Сохраняем в контексте для callback
+        context.user_data['current_flight_data'] = flight_data_for_favorite
+        
+        # Клавиатура с кнопкой добавления в избранное
         keyboard = [
+            [InlineKeyboardButton("⭐ Добавить в избранное", callback_data=f'fav_flight_{flight_number}')],
             [InlineKeyboardButton("🔍 Проверить другой рейс", callback_data='flight_info')],
             [InlineKeyboardButton("← Назад", callback_data='back')]
         ]
@@ -226,29 +244,66 @@ async def handle_flight_info_request(update: Update, flight_number: str):
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
         
-    except requests.exceptions.Timeout:
-        await update.message.reply_text(
-            "❌ Превышено время ожидания ответа от сервера.\nПопробуйте позже.",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("← Попробовать снова", callback_data='flight_info')],
-                [InlineKeyboardButton("← Назад", callback_data='back')]
-                ])
-            )
-    except IndexError:
-        await update.message.reply_text(
-            f"❌ Информация о рейсе {flight_number} не найдена.\n"
-            "Проверьте правильность номера рейса.",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("← Попробовать снова", callback_data='flight_info')],
-                [InlineKeyboardButton("← Назад", callback_data='back')]
-            ])
-        )
     except Exception as e:
         logger.error(f"Ошибка при получении информации о рейсе: {e}", exc_info=True)
         await update.message.reply_text(
             "❌ Произошла ошибка при получении информации о рейсе.\nПопробуйте позже.",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("← Попробовать снова", callback_data='flight_info')],
+                [InlineKeyboardButton("← Назад", callback_data='back')]
+            ])
+        )
+
+async def add_flight_to_favorites(update: Update, context: ContextTypes.DEFAULT_TYPE, flight_number: str):
+    """Добавляет рейс в избранное для отслеживания"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user_id = query.from_user.id
+        flight_data = context.user_data.get('current_flight_data', {})
+        
+        if not flight_data:
+            await query.edit_message_text("❌ Не удалось добавить рейс в избранное. Сначала выполните поиск рейса.")
+            return
+        
+        # Создаем уникальный ключ для рейса
+        route_key = f"flight_{flight_number}_{flight_data.get('flight_date', '')}"
+        
+        favorite_data = {
+            'route_key': route_key,
+            'type': 'flight',
+            'flight_number': flight_number,
+            'flight_iata': flight_data.get('flight_iata'),
+            'airline': flight_data.get('airline'),
+            'departure_airport': flight_data.get('departure_airport'),
+            'departure_iata': flight_data.get('departure_iata'),
+            'arrival_airport': flight_data.get('arrival_airport'),
+            'arrival_iata': flight_data.get('arrival_iata'),
+            'flight_date': flight_data.get('flight_date'),
+            'current_status': flight_data.get('current_status'),
+            'scheduled_departure': flight_data.get('scheduled_departure'),
+            'estimated_departure': flight_data.get('estimated_departure'),
+            'added_at': datetime.now().isoformat()
+        }
+        
+        if favorite_storage.add_favorite(user_id, favorite_data):
+            await query.edit_message_text(
+                f"✅ Рейс {flight_number} добавлен в избранное!\n"
+                "Вы будете получать уведомления об изменении статуса и времени вылета.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("Мои избранные рейсы", callback_data='my_favorites')],
+                    [InlineKeyboardButton("← Назад", callback_data='back')]
+                ])
+            )
+        else:
+            await query.edit_message_text("❌ Этот рейс уже есть в вашем избранном!")
+            
+    except Exception as e:
+        logger.error(f"Ошибка при добавлении рейса в избранное: {e}")
+        await update.callback_query.edit_message_text(
+            "❌ Ошибка при добавлении в избранное.",
+            reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("← Назад", callback_data='back')]
             ])
         )

@@ -54,9 +54,12 @@ async def show_flight_info_menu(update: Update, context: ContextTypes.DEFAULT_TY
     
     instruction_text = (
         "✈️ Получение информации о рейсе\n\n"
-        "Введите номер рейса:\n"
+        "Введите номер рейса в формате:\n"
+        "<код авиакомпании><номер рейса>\n\n"
         "Примеры:\n"
         "SU1234\n"
+        "S7151\n"
+        "U6256\n\n"
         "Я покажу актуальную информацию о рейсе."
     )
     
@@ -71,7 +74,7 @@ async def show_flight_info_menu(update: Update, context: ContextTypes.DEFAULT_TY
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-async def handle_flight_info_request(update: Update, flight_number: str):
+async def handle_flight_info_request(update: Update, context: ContextTypes.DEFAULT_TYPE, flight_number: str):
     """Обрабатывает запрос информации о рейсе"""
     try:
         # Очищаем номер рейса от лишних символов

@@ -214,10 +214,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if choice == 'airline_routes':
         await show_airline_selection(update, context)
         return
-    if choice == 'flight_info':
-        user_states[user_id] = 'flight_info'
-        await show_flight_info_menu(update, context)
-        return
+    elif search_type == 'flight_info':
+        from flight_info import handle_flight_info_request
+        await handle_flight_info_request(update, context, text)
     
     user_states[user_id] = choice
     

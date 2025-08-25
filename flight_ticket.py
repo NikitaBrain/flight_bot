@@ -185,12 +185,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         else:
             await query.edit_message_text("❌ Не удалось добавить в избранное. Сначала выполните поиск.")
         return
-
-    if choice.startswith('fav_flight_'):
-        flight_number = choice.split('_', 2)[2]
-        from flight_info import add_flight_to_favorites
-        await add_flight_to_favorites(update, context, flight_number)
-        return
     
     if choice.startswith('fav_detail_'):
         route_key = choice.split('_', 2)[2]

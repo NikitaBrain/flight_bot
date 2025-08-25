@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 def translate_status(status):
     """Переводит статус рейса на русский"""
     status_translations = {
-        'scheduled': '🔄 Запланирован',
+        'scheduled': '✔️ Запланирован',
         'active': '🛫 В полете',
         'landed': '🛬 Приземлился',
         'cancelled': '❌ Отменен',
@@ -53,11 +53,8 @@ async def show_flight_info_menu(update: Update, context: ContextTypes.DEFAULT_TY
     instruction_text = (
         "✈️ Получение информации о рейсе\n\n"
         "Введите номер рейса в формате:\n"
-        "<код авиакомпании><номер рейса>\n\n"
         "Примеры:\n"
         "SU1234\n"
-        "S7151\n"
-        "U6256\n\n"
         "Я покажу актуальную информацию о рейсе."
     )
     
@@ -120,101 +117,121 @@ async def handle_flight_info_request(update: Update, flight_number: str):
         
         flight_data = flight_data_list[0]
         
-        # Формируем сообщение с информацией о рейсе
-        message = f"✈️ Информация о рейсе {flight_number}:\n\n"
-        
         # Основная информация
         departure = flight_data.get('departure', {}) or {}
         arrival = flight_data.get('arrival', {}) or {}
         airline = flight_data.get('airline', {}) or {}
         flight_info = flight_data.get('flight', {}) or {}
+        aircraft = flight_data.get('aircraft', {}) or {}
         
-        # 📅 Дата рейса в формате дд.мм.гггг
-        flight_date = safe_get(flight_data, 'flight_date')
-        if flight_date:
-            message += f"📅 Дата рейса: {format_flight_date(flight_date)}\n"
+        # Формируем сообщение с информацией о рейсе
+        message = f"✈️ Информация о рейсе {flight_number}:\n\n"
         
-        # 📊 Статус на русском
-        status = safe_get(flight_data, 'flight_status', 'unknown')
-        message += f"📊 Статус: {translate_status(status)}\n\n"
-        
-        # 🛫 Откуда и куда
+        # Откуда и куда
         dep_airport = safe_get(departure, 'airport')
         dep_iata = safe_get(departure, 'iata')
         arr_airport = safe_get(arrival, 'airport')
         arr_iata = safe_get(arrival, 'iata')
         
-        message += f"🛫 Откуда: {dep_airport or 'Неизвестно'} ({dep_iata or '?'})\n"
-        message += f"🛬 Куда: {arr_airport or 'Неизвестно'} ({arr_iata or '?'})\n\n"
+        message += f"{dep_airport or 'Неизвестно'} ({dep_iata or '?'}) - {arr_airport or 'Неизвестно'} ({arr_iata or '?'})\n"
         
-        # 🕐 Время вылета
-        dep_scheduled = safe_get(departure, 'scheduled')
-        dep_estimated = safe_get(departure, 'estimated')
-        dep_actual = safe_get(departure, 'actual')
+        # Дата рейса и статус
+        flight_date = safe_get(flight_data, 'flight_date')
+        if flight_date:
+            message += f"📅 Дата рейса: {format_flight_date(flight_date)}\n"
         
-        if dep_scheduled:
-            message += f"🕐 Вылет запланирован: {format_date(dep_scheduled)}\n"
-        if dep_estimated and dep_estimated != dep_scheduled:
-            message += f"🕐 Вылет ожидается: {format_date(dep_estimated)}\n"
-        if dep_actual:
-            message += f"🕐 Вылет фактический: {format_date(dep_actual)}\n"
+        status = safe_get(flight_data, 'flight_status', 'unknown')
+        message += f"📊 Статус: {translate_status(status)}\n\n"
         
-        # Задержка вылета
-        dep_delay = safe_get(departure, 'delay')
-        if dep_delay and int(dep_delay) > 0:
-            message += f"⏰ Задержка вылета: {dep_delay} мин\n"
+        # 🛫 ВЫЛЕТ
+        message += "🛫 ВЫЛЕТ:\n"
+        message += f"📍 Аэропорт: {dep_airport or 'Неизвестно'} ({dep_iata or '?'})\n"
         
-        message += "\n"
-        
-        # 🕐 Время прибытия
-        arr_scheduled = safe_get(arrival, 'scheduled')
-        arr_estimated = safe_get(arrival, 'estimated')
-        arr_actual = safe_get(arrival, 'actual')
-        
-        if arr_scheduled:
-            message += f"🕐 Прибытие запланировано: {format_date(arr_scheduled)}\n"
-        if arr_estimated and arr_estimated != arr_scheduled:
-            message += f"🕐 Прибытие ожидается: {format_date(arr_estimated)}\n"
-        if arr_actual:
-            message += f"🕐 Прибытие фактическое: {format_date(arr_actual)}\n"
-        
-        # Задержка прибытия
-        arr_delay = safe_get(arrival, 'delay')
-        if arr_delay and int(arr_delay or 0) > 0:
-            message += f"⏰ Задержка прибытия: {arr_delay} мин\n"
-        
-        message += "\n"
-        
-        # ✈️ Информация о рейсе
-        airline_name = safe_get(airline, 'name')
-        if airline_name:
-            message += f"🏛️ Авиакомпания: {airline_name}\n"
-        
-        # Только номер рейса в формате IATA (без ICAO)
-        flight_iata = safe_get(flight_info, 'iata')
-        if flight_iata:
-            message += f"🔢 Номер рейса: {flight_iata}\n"
-        
-        # Дополнительная информация (только если не None)
+        # Только не-None поля для вылета
         dep_terminal = safe_get(departure, 'terminal')
         if dep_terminal:
-            message += f"📍 Терминал вылета: {dep_terminal}\n"
+            message += f"ℹ️ Терминал: {dep_terminal}\n"
         
         dep_gate = safe_get(departure, 'gate')
         if dep_gate:
-            message += f"🚪 Гейт вылета: {dep_gate}\n"
+            message += f"🚪 Гейт: {dep_gate}\n"
         
+        dep_scheduled = safe_get(departure, 'scheduled')
+        if dep_scheduled:
+            message += f"🕐 Запланировано: {format_date(dep_scheduled)}\n"
+        
+        dep_estimated = safe_get(departure, 'estimated')
+        if dep_estimated:
+            message += f"🕐 Ожидается: {format_date(dep_estimated)}\n"
+        
+        dep_actual = safe_get(departure, 'actual')
+        if dep_actual:
+            message += f"🕐 Фактически: {format_date(dep_actual)}\n"
+        
+        dep_delay = safe_get(departure, 'delay')
+        if dep_delay and int(dep_delay) > 0:
+            message += f"⏰ Задержка: {dep_delay} мин\n"
+        
+        message += "\n"
+        
+        # 🛬 ПРИБЫТИЕ
+        message += "🛬 ПРИБЫТИЕ:\n"
+        message += f"📍 Аэропорт: {arr_airport or 'Неизвестно'} ({arr_iata or '?'})\n"
+        
+        # Только не-None поля для прибытия
         arr_terminal = safe_get(arrival, 'terminal')
         if arr_terminal:
-            message += f"📍 Терминал прибытия: {arr_terminal}\n"
+            message += f"ℹ️ Терминал: {arr_terminal}\n"
         
         arr_gate = safe_get(arrival, 'gate')
         if arr_gate:
-            message += f"🚪 Гейт прибытия: {arr_gate}\n"
+            message += f"🚪 Гейт: {arr_gate}\n"
         
         arr_baggage = safe_get(arrival, 'baggage')
         if arr_baggage:
-            message += f"🎒 Багаж: {arr_baggage}\n"
+            message += f"🛄 Багаж: {arr_baggage}\n"
+        
+        arr_scheduled = safe_get(arrival, 'scheduled')
+        if arr_scheduled:
+            message += f"🕐 Запланировано: {format_date(arr_scheduled)}\n"
+        
+        arr_estimated = safe_get(arrival, 'estimated')
+        if arr_estimated:
+            message += f"🕐 Ожидается: {format_date(arr_estimated)}\n"
+        
+        arr_actual = safe_get(arrival, 'actual')
+        if arr_actual:
+            message += f"🕐 Фактически: {format_date(arr_actual)}\n"
+        
+        arr_delay = safe_get(arrival, 'delay')
+        if arr_delay and int(arr_delay or 0) > 0:
+            message += f"• ⏰ Задержка: {arr_delay} мин\n"
+        
+        message += "\n"
+        
+        # ✈️ ИНФОРМАЦИЯ О РЕЙСЕ
+        message += "✈️ ИНФОРМАЦИЯ О РЕЙСЕ:\n"
+        
+        airline_name = safe_get(airline, 'name')
+        airline_iata = safe_get(airline, 'iata')
+        if airline_name and airline_iata:
+            message += f"• Авиакомпания: {airline_name} ({airline_iata})\n"
+        elif airline_name:
+            message += f"• Авиакомпания: {airline_name}\n"
+        
+        flight_iata = safe_get(flight_info, 'iata')
+        if flight_iata:
+            message += f"• Номер рейса: {flight_iata}\n"
+        
+        # Информация о самолете (если есть)
+        aircraft_iata = safe_get(aircraft, 'iata')
+        aircraft_name = safe_get(aircraft, 'name')
+        if aircraft_iata and aircraft_name:
+            message += f"• Самолет: {aircraft_name} ({aircraft_iata})\n"
+        elif aircraft_name:
+            message += f"• Самолет: {aircraft_name}\n"
+        elif aircraft_iata:
+            message += f"• Самолет: {aircraft_iata}\n"
         
         # Клавиатура для возврата
         keyboard = [

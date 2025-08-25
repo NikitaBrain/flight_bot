@@ -8,6 +8,25 @@ import json
 
 logger = logging.getLogger(__name__)
 
+def translate_status(status):
+    """Переводит статус рейса на русский"""
+    status_translations = {
+        'scheduled': '🔄 Запланирован',
+        'active': '🛫 В полете',
+        'landed': '🛬 Приземлился',
+        'cancelled': '❌ Отменен',
+        'incident': '⚠️ Происшествие',
+        'diverted': '🔄 Перенаправлен',
+        'unknown': '❓ Неизвестен'
+    }
+    return status_translations.get(status, f'❓ {status}')
+
+def safe_get(data, key, default='Неизвестно'):
+    """Безопасное получение значения из словаря"""
+    if not data or not isinstance(data, dict):
+        return default
+    return data.get(key, default)
+
 async def show_flight_info_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показывает меню для получения информации о рейсе"""
     if update.callback_query:
@@ -121,64 +140,80 @@ async def handle_flight_info_request(update: Update, flight_number: str):
         flight_data = flight_data_list[0]
         
         # Формируем сообщение с информацией о рейсе
-        message = f"✈️ Информация о рейсе {flight_number}:\n\n"
+        message = f"✈️ Детальная информация о рейсе {flight_number}:\n\n"
         
-        # Основная информация с безопасным доступом к данным
+        # Основная информация
         departure = flight_data.get('departure', {}) or {}
         arrival = flight_data.get('arrival', {}) or {}
+        airline = flight_data.get('airline', {}) or {}
+        flight_info = flight_data.get('flight', {}) or {}
+        aircraft = flight_data.get('aircraft', {}) or {}
+        live_data = flight_data.get('live', {}) or {}
         
-        message += f"🛫 Вылет: {departure.get('airport', 'Неизвестно')} "
-        message += f"({departure.get('iata', '?')})\n"
+        # 📅 Дата и статус рейса
+        message += f"📅 Дата рейса: {flight_data.get('flight_date', 'Неизвестно')}\n"
+        status = flight_data.get('flight_status', 'unknown')
+        message += f"📊 Статус: {translate_status(status)}\n\n"
         
-        message += f"🛬 Прибытие: {arrival.get('airport', 'Неизвестно')} "
-        message += f"({arrival.get('iata', '?')})\n\n"
+        # 🛫 Информация о вылете
+        message += "🛫 ВЫЛЕТ:\n"
+        message += f"• Аэропорт: {safe_get(departure, 'airport')} ({safe_get(departure, 'iata')})\n"
+        message += f"• Терминал: {safe_get(departure, 'terminal')}\n"
+        message += f"• Гейт: {safe_get(departure, 'gate')}\n"
         
-        # Время вылета и прибытия
         if departure.get('scheduled'):
-            message += f"📅 Запланированный вылет: {format_date(departure['scheduled'])}\n"
+            message += f"• Запланировано: {format_date(departure['scheduled'])}\n"
+        if departure.get('estimated'):
+            message += f"• Ожидается: {format_date(departure['estimated'])}\n"
+        if departure.get('actual'):
+            message += f"• Фактически: {format_date(departure['actual'])}\n"
+        
+        delay = departure.get('delay')
+        if delay and int(delay) > 0:
+            message += f"• ⏰ Задержка: {delay} мин\n"
+        
+        message += "\n"
+        
+        # 🛬 Информация о прибытии
+        message += "🛬 ПРИБЫТИЕ:\n"
+        message += f"• Аэропорт: {safe_get(arrival, 'airport')} ({safe_get(arrival, 'iata')})\n"
+        message += f"• Терминал: {safe_get(arrival, 'terminal')}\n"
+        message += f"• Гейт: {safe_get(arrival, 'gate')}\n"
+        message += f"• Багаж: {safe_get(arrival, 'baggage')}\n"
         
         if arrival.get('scheduled'):
-            message += f"📅 Запланированное прибытие: {format_date(arrival['scheduled'])}\n\n"
+            message += f"• Запланировано: {format_date(arrival['scheduled'])}\n"
+        if arrival.get('estimated'):
+            message += f"• Ожидается: {format_date(arrival['estimated'])}\n"
+        if arrival.get('actual'):
+            message += f"• Фактически: {format_date(arrival['actual'])}\n"
         
-        # Статус рейса
-        status = flight_data.get('flight_status', 'unknown')
-        status_emoji = {
-            'scheduled': '📅',
-            'active': '🛫',
-            'landed': '🛬',
-            'cancelled': '❌',
-            'incident': '⚠️',
-            'diverted': '🔄'
-        }.get(status, '❓')
+        arrival_delay = arrival.get('delay')
+        if arrival_delay and int(arrival_delay or 0) > 0:
+            message += f"• ⏰ Задержка: {arrival_delay} мин\n"
         
-        message += f"📊 Статус: {status_emoji} {status.capitalize()}\n"
+        message += "\n"
         
-        # Дополнительная информация с проверкой на None
-        airline = flight_data.get('airline', {}) or {}
-        if airline and airline.get('name'):
-            message += f"🏛️ Авиакомпания: {airline['name']}\n"
+        # ✈️ Информация о рейсе и авиакомпании
+        message += "✈️ ИНФОРМАЦИЯ О РЕЙСЕ:\n"
+        message += f"• Авиакомпания: {safe_get(airline, 'name')} ({safe_get(airline, 'iata')})\n"
+        message += f"• Номер рейса: {safe_get(flight_info, 'number')}\n"
+        message += f"• Код IATA: {safe_get(flight_info, 'iata')}\n"
+        message += f"• Код ICAO: {safe_get(flight_info, 'icao')}\n"
         
-        # Безопасный доступ к aircraft (может быть None)
-        aircraft = flight_data.get('aircraft')
-        if aircraft and isinstance(aircraft, dict) and aircraft.get('iata'):
-            message += f"🛩️ Тип ВС: {aircraft['iata']}\n"
-        elif aircraft and isinstance(aircraft, dict) and aircraft.get('registration'):
-            message += f"🛩️ Регистрация: {aircraft['registration']}\n"
+        # 🛩️ Информация о самолете (если доступна)
+        if aircraft:
+            message += f"• Тип ВС: {safe_get(aircraft, 'iata')} ({safe_get(aircraft, 'registration')})\n"
         
-        flight_info = flight_data.get('flight', {}) or {}
-        if flight_info and flight_info.get('number'):
-            message += f"🔢 Номер рейса: {flight_info['number']}\n"
-        
-        # Информация о задержке
-        if departure.get('delay'):
-            message += f"⏰ Задержка вылета: {departure['delay']} мин\n"
-        
-        if arrival.get('delay'):
-            message += f"⏰ Задержка прибытия: {arrival['delay']} мин\n"
-        
-        # Добавляем дату рейса
-        if flight_data.get('flight_date'):
-            message += f"📅 Дата рейса: {flight_data['flight_date']}\n"
+        # 📡 Live данные (если доступны)
+        if live_data:
+            message += "\n📡 ДАННЫЕ В РЕАЛЬНОМ ВРЕМЕНИ:\n"
+            if live_data.get('altitude'):
+                message += f"• Высота: {live_data['altitude']} м\n"
+            if live_data.get('speed'):
+                message += f"• Скорость: {live_data['speed']} км/ч\n"
+            if live_data.get('direction'):
+                message += f"• Направление: {live_data['direction']}°\n"
         
         # Клавиатура для возврата
         keyboard = [
@@ -197,8 +232,8 @@ async def handle_flight_info_request(update: Update, flight_number: str):
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("← Попробовать снова", callback_data='flight_info')],
                 [InlineKeyboardButton("← Назад", callback_data='back')]
-            ])
-        )
+                ])
+            )
     except IndexError:
         await update.message.reply_text(
             f"❌ Информация о рейсе {flight_number} не найдена.\n"

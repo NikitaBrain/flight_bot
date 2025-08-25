@@ -32,6 +32,10 @@ from storage import favorite_storage
 from price_calendar import handle_price_calendar
 from stats import handle_price_stats
 from airline_routes import show_airline_selection, show_airline_routes
+<<<<<<< HEAD
+=======
+from flight_info import show_flight_info_menu, handle_flight_info_request
+>>>>>>> master
 
 # Настройка логгирования
 logging.basicConfig(
@@ -119,7 +123,11 @@ async def show_main_menu(update: Update, text: str = None, is_start: bool = Fals
     keyboard = [
         ["🔍 Дешевые билеты", "📅 Календарь цен"],
         ["📊 Статистика цен", "⭐ Избранное"],
+<<<<<<< HEAD
         ["✈️ Популярные рейсы"]
+=======
+        ["✈️ Популярные рейсы", "ℹ️ Инфо о рейсе"]
+>>>>>>> master
     ]
     reply_markup = ReplyKeyboardMarkup(
         keyboard,
@@ -207,6 +215,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if choice == 'airline_routes':
         await show_airline_selection(update, context)
         return
+<<<<<<< HEAD
+=======
+    if choice == 'flight_info':
+        user_states[user_id] = 'flight_info'
+        await show_flight_info_menu(update, context)
+        return
+>>>>>>> master
     
     user_states[user_id] = choice
     
@@ -702,6 +717,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await FavoritesManager.show_favorites_menu(update, user_id)
     elif text == "✈️ Популярные рейсы":
         await show_airline_selection(update, context)
+<<<<<<< HEAD
+=======
+    elif text == "ℹ️ Инфо о рейсе":  # Новая кнопка
+        user_states[user_id] = 'flight_info'
+        await show_flight_info_menu(update, context)
+>>>>>>> master
     elif user_id in user_states:
         search_type = user_states[user_id]
         
@@ -711,6 +732,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await handle_price_calendar(update, text)
         elif search_type == 'stats':
             await handle_price_stats(update, text)
+<<<<<<< HEAD
+=======
+        elif search_type == 'flight_info':  # Новая обработка
+            await handle_flight_info_request(update, text)
+>>>>>>> master
     else:
         await show_main_menu(update)
 

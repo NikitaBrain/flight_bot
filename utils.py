@@ -80,6 +80,19 @@ async def get_aircraft_name(aircraft_code: str) -> str:
     aircraft = aircraft_cache.get(aircraft_code.upper(), {})
     return aircraft.get('name', aircraft_code)
 
+<<<<<<< HEAD
+=======
+def format_aviationstack_date(date_str: str) -> str:
+    """Форматируем дату из AviationStack в дд.мм.гггг чч:мм"""
+    try:
+        dt = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S%z")
+        local_tz = pytz.timezone('Europe/Moscow')
+        local_dt = dt.astimezone(local_tz)
+        return local_dt.strftime("%d.%m.%Y %H:%M")
+    except:
+        return date_str
+
+>>>>>>> master
 def format_date(date_str: str) -> str:
     """Форматируем дату в дд.мм.гггг чч:мм"""
     try:

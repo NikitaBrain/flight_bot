@@ -120,7 +120,7 @@ async def show_main_menu(update: Update, text: str = None, is_start: bool = Fals
     keyboard = [
         ["🔍 Дешевые билеты", "📅 Календарь цен"],
         ["📊 Статистика цен", "⭐ Избранное"],
-        ["✈️ Популярные рейсы", "ℹ️ Инфо о рейсе"]  # Добавляем новую кнопку
+        ["✈️ Популярные рейсы", "ℹ️ Инфо о рейсе"]
     ]
     reply_markup = ReplyKeyboardMarkup(
         keyboard,
@@ -138,7 +138,7 @@ async def show_main_menu(update: Update, text: str = None, is_start: bool = Fals
                 "📆 Показать лучшие даты для перелета\n"
                 "📈 Поделиться статистикой цен\n"
                 "✈️ Показать популярные направления у авиакомпаний\n"
-                "❗️🆕❗️ Получить информацию о конкретном рейсе\n",  
+                "ℹ️ Получить информацию о конкретном рейсе\n",
                 reply_markup=reply_markup
             )
         else:
@@ -146,6 +146,14 @@ async def show_main_menu(update: Update, text: str = None, is_start: bool = Fals
                 "Выберите действие:",
                 reply_markup=reply_markup
             )
+    else:
+        keyboard = [
+            [InlineKeyboardButton("← Назад", callback_data='back')]
+        ]
+        await update.edit_message_text(
+            "Выберите действие:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
     else:
         # Для callback-запросов оставляем возможность вернуться к главному меню
         keyboard = [
@@ -243,13 +251,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         'calendar': "📅 Введите маршрут для календаря цен в формате: <город отправления> <город назначения>",
         'stats': "📊 Введите маршрут для статистики цен в формате: <город отправления> <город назначения>",
         'flight_info': "✈️ Введите номер рейса в формате: <код авиакомпании><номер рейса> (например: SU1234)"
-    }.get(choice, "Выберите тип поиска")
+    }
+    
+    instruction_text = instructions.get(choice, "Выберите тип поиска")
     
     keyboard = [[InlineKeyboardButton("← Назад", callback_data='back')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(
-        text=instructions,
+        text=instruction_text,
         reply_markup=reply_markup
     )
 
@@ -723,12 +733,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await FavoritesManager.show_favorites_menu(update, user_id)
     elif text == "✈️ Популярные рейсы":
         await show_airline_selection(update, context)
-    elif text == "ℹ️ Инфо о рейсе":  # Новая кнопка
+    elif text == "ℹ️ Инфо о рейсе":
         user_states[user_id] = 'flight_info'
         from flight_info import show_flight_info_menu
         await show_flight_info_menu(update, context)
     elif user_id in user_states:
-        search_type = user_states[user_id]  # Теперь переменная определена
+        search_type = user_states[user_id]
         
         if search_type == 'cheap':
             await handle_cheap_tickets(update, text)

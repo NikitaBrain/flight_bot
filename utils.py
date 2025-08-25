@@ -81,27 +81,28 @@ async def get_aircraft_name(aircraft_code: str) -> str:
     return aircraft.get('name', aircraft_code)
 
 def format_date(date_str: str) -> str:
-    """Форматируем дату в дд.мм.гггг чч:мм"""
+    """Форматируем дату в дд.мм.гггг чч:мм (правильное время)"""
     try:
         # Пробуем разные форматы дат
         formats = [
-            "%Y-%m-%dT%H:%M:%S%z",  # AviationStack format
-            "%Y-%m-%d %H:%M:%S",     # Alternative format
+            "%Y-%m-%dT%H:%M:%S%z",  # AviationStack format with timezone
             "%Y-%m-%dT%H:%M:%S",     # Without timezone
+            "%Y-%m-%d %H:%M:%S",     # Alternative format
         ]
         
         for fmt in formats:
             try:
                 dt = datetime.strptime(date_str, fmt)
-                local_tz = pytz.timezone('Europe/Moscow')
+                # Если время без timezone, считаем что это UTC
                 if dt.tzinfo is None:
                     dt = pytz.utc.localize(dt)
+                # Конвертируем в московское время
+                local_tz = pytz.timezone('Europe/Moscow')
                 local_dt = dt.astimezone(local_tz)
                 return local_dt.strftime("%d.%m.%Y %H:%M")
             except ValueError:
                 continue
         
-        # Если ни один формат не подошел, возвращаем исходную строку
         return date_str
     except Exception:
         return date_str

@@ -5,7 +5,6 @@ from telegram import (
     InlineKeyboardMarkup,
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
-    KeyboardButton
 )
 from telegram.ext import (
     Application,
@@ -154,24 +153,6 @@ async def show_main_menu(update: Update, text: str = None, is_start: bool = Fals
             "Выберите действие:",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
-    else:
-        # Для callback-запросов оставляем возможность вернуться к главному меню
-        keyboard = [
-            [InlineKeyboardButton("← Назад", callback_data='back')]
-        ]
-        await update.edit_message_text(
-            "Выберите действие:",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-    else:
-        # Для callback-запросов оставляем возможность вернуться к главному меню
-        keyboard = [
-            [InlineKeyboardButton("← Назад", callback_data='back')]
-        ]
-        await update.edit_message_text(
-            "Выберите действие:",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработчик команды /start"""
@@ -189,9 +170,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     
     user_id = query.from_user.id
     choice = query.data
-    
-    current_state = user_states.get(user_id, 'no state')
-    logger.info(f"User state before handling: {current_state}")
     
     if choice == 'back':
         await show_main_menu(query)
@@ -228,14 +206,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await show_airline_selection(update, context)
         return
     
-    # Обработка кнопок для информации о рейсе
     if choice == 'flight_info':
         user_states[user_id] = 'flight_info'
-        from flight_info import show_flight_info_menu
         await show_flight_info_menu(update, context)
         return
     
-    # Обработка других callback данных
     user_states[user_id] = choice
     
     instructions = {
@@ -735,7 +710,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await show_airline_selection(update, context)
     elif text == "ℹ️ Инфо о рейсе":
         user_states[user_id] = 'flight_info'
-        from flight_info import show_flight_info_menu
         await show_flight_info_menu(update, context)
     elif user_id in user_states:
         search_type = user_states[user_id]
@@ -747,7 +721,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         elif search_type == 'stats':
             await handle_price_stats(update, text)
         elif search_type == 'flight_info':
-            from flight_info import handle_flight_info_request
             await handle_flight_info_request(update, text)
     else:
         await show_main_menu(update)

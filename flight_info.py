@@ -65,7 +65,6 @@ async def handle_flight_info_request(update: Update, flight_number: str):
         
         # Логируем ответ для отладки
         logger.info(f"AviationStack response status: {response.status_code}")
-        logger.info(f"AviationStack response text: {response.text[:200]}...")
         
         try:
             data = response.json()
@@ -124,9 +123,9 @@ async def handle_flight_info_request(update: Update, flight_number: str):
         # Формируем сообщение с информацией о рейсе
         message = f"✈️ Информация о рейсе {flight_number}:\n\n"
         
-        # Основная информация
-        departure = flight_data.get('departure', {})
-        arrival = flight_data.get('arrival', {})
+        # Основная информация с безопасным доступом к данным
+        departure = flight_data.get('departure', {}) or {}
+        arrival = flight_data.get('arrival', {}) or {}
         
         message += f"🛫 Вылет: {departure.get('airport', 'Неизвестно')} "
         message += f"({departure.get('iata', '?')})\n"
@@ -154,17 +153,20 @@ async def handle_flight_info_request(update: Update, flight_number: str):
         
         message += f"📊 Статус: {status_emoji} {status.capitalize()}\n"
         
-        # Дополнительная информация
-        airline = flight_data.get('airline', {})
-        if airline.get('name'):
+        # Дополнительная информация с проверкой на None
+        airline = flight_data.get('airline', {}) or {}
+        if airline and airline.get('name'):
             message += f"🏛️ Авиакомпания: {airline['name']}\n"
         
-        aircraft = flight_data.get('aircraft', {})
-        if aircraft.get('iata'):
+        # Безопасный доступ к aircraft (может быть None)
+        aircraft = flight_data.get('aircraft')
+        if aircraft and isinstance(aircraft, dict) and aircraft.get('iata'):
             message += f"🛩️ Тип ВС: {aircraft['iata']}\n"
+        elif aircraft and isinstance(aircraft, dict) and aircraft.get('registration'):
+            message += f"🛩️ Регистрация: {aircraft['registration']}\n"
         
-        flight_info = flight_data.get('flight', {})
-        if flight_info.get('number'):
+        flight_info = flight_data.get('flight', {}) or {}
+        if flight_info and flight_info.get('number'):
             message += f"🔢 Номер рейса: {flight_info['number']}\n"
         
         # Информация о задержке
@@ -173,6 +175,10 @@ async def handle_flight_info_request(update: Update, flight_number: str):
         
         if arrival.get('delay'):
             message += f"⏰ Задержка прибытия: {arrival['delay']} мин\n"
+        
+        # Добавляем дату рейса
+        if flight_data.get('flight_date'):
+            message += f"📅 Дата рейса: {flight_data['flight_date']}\n"
         
         # Клавиатура для возврата
         keyboard = [

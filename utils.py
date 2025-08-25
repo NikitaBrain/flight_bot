@@ -3,7 +3,6 @@ import requests
 from datetime import datetime
 import pytz
 from config import CITY_SEARCH_URL, AIRLINES_URL, AIRCRAFT_URL
-from datetime import timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -82,31 +81,23 @@ async def get_aircraft_name(aircraft_code: str) -> str:
     return aircraft.get('name', aircraft_code)
 
 def format_date(date_str: str) -> str:
-    """Форматируем дату в дд.мм.гггг чч:мм (правильное время MSK)"""
+    """Форматируем дату в дд.мм.гггг чч:мм (правильное время для AviationStack)"""
     try:
-        # AviationStack возвращает время в UTC, например: "2025-08-24T18:15:00+00:00"
-        dt = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S%z")
-        
-        # Конвертируем UTC в московское время (MSK = UTC+3)
-        msk_tz = pytz.timezone('Europe/Moscow')
-        msk_dt = dt.astimezone(msk_tz)
-        
-        return msk_dt.strftime("%d.%m.%Y %H:%M")
-    except Exception as e:
-        logger.error(f"Ошибка форматирования даты {date_str}: {e}")
-        return date_str
-
-def format_aviationstack_date(date_str: str) -> str:
-    """Альтернативная функция для AviationStack дат"""
-    try:
-        # Убираем timezone информацию и парсим как UTC
+        # AviationStack возвращает время в формате: "2025-08-24T18:15:00+00:00"
+        # Но время УЖЕ правильное (местное время аэропорта), нужно только убрать timezone
         if '+' in date_str:
-            date_str = date_str.split('+')[0]
+            # Убираем часть с timezone
+            date_without_tz = date_str.split('+')[0]
+            dt = datetime.strptime(date_without_tz, "%Y-%m-%dT%H:%M:%S")
+        else:
+            dt = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S")
         
-        dt = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S")
-        # Добавляем 3 часа для московского времени
-        dt += timedelta(hours=3)
         return dt.strftime("%d.%m.%Y %H:%M")
     except Exception as e:
-        logger.error(f"Ошибка альтернативного форматирования даты {date_str}: {e}")
-        return date_str
+        logger.error(f"Ошибка форматирования даты {date_str}: {e}")
+        # Попробуем альтернативный формат
+        try:
+            dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+            return dt.strftime("%d.%m.%Y %H:%M")
+        except:
+            return date_str

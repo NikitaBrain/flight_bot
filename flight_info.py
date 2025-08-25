@@ -4,6 +4,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from config import AVIATIONSTACK_API_KEY, AVIATIONSTACK_FLIGHT_URL
 from utils import format_date
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -62,10 +63,16 @@ async def handle_flight_info_request(update: Update, flight_number: str):
         # Выполняем запрос
         response = requests.get(AVIATIONSTACK_FLIGHT_URL, params=params, timeout=15)
         
-        # Проверяем статус ответа
-        if response.status_code != 200:
+        # Логируем ответ для отладки
+        logger.info(f"AviationStack response status: {response.status_code}")
+        logger.info(f"AviationStack response text: {response.text[:200]}...")
+        
+        try:
+            data = response.json()
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode error: {e}, response text: {response.text}")
             await update.message.reply_text(
-                f"❌ Ошибка сервера: {response.status_code}\nПопробуйте позже.",
+                "❌ Ошибка при обработке ответа от сервера авиаданных.",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("← Попробовать снова", callback_data='flight_info')],
                     [InlineKeyboardButton("← Назад", callback_data='back')]
@@ -73,10 +80,35 @@ async def handle_flight_info_request(update: Update, flight_number: str):
             )
             return
         
-        data = response.json()
+        # Проверяем структуру ответа
+        if not data or not isinstance(data, dict):
+            logger.error(f"Invalid response format: {data}")
+            await update.message.reply_text(
+                "❌ Неверный формат ответа от сервера авиаданных.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("← Попробовать снова", callback_data='flight_info')],
+                    [InlineKeyboardButton("← Назад", callback_data='back')]
+                ])
+            )
+            return
+        
+        # Проверяем наличие ошибок в ответе
+        if 'error' in data:
+            error_info = data.get('error', {})
+            error_message = error_info.get('message', 'Неизвестная ошибка')
+            logger.error(f"AviationStack error: {error_message}")
+            await update.message.reply_text(
+                f"❌ Ошибка API: {error_message}",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("← Попробовать снова", callback_data='flight_info')],
+                    [InlineKeyboardButton("← Назад", callback_data='back')]
+                ])
+            )
+            return
         
         # Проверяем наличие данных о рейсах
-        if not data.get('data'):
+        flight_data_list = data.get('data', [])
+        if not flight_data_list or not isinstance(flight_data_list, list):
             await update.message.reply_text(
                 f"❌ Информация о рейсе {flight_number} не найдена.\n"
                 "Проверьте правильность номера рейса.",
@@ -87,7 +119,7 @@ async def handle_flight_info_request(update: Update, flight_number: str):
             )
             return
         
-        flight_data = data['data'][0]
+        flight_data = flight_data_list[0]
         
         # Формируем сообщение с информацией о рейсе
         message = f"✈️ Информация о рейсе {flight_number}:\n\n"
@@ -95,9 +127,6 @@ async def handle_flight_info_request(update: Update, flight_number: str):
         # Основная информация
         departure = flight_data.get('departure', {})
         arrival = flight_data.get('arrival', {})
-        airline = flight_data.get('airline', {})
-        flight = flight_data.get('flight', {})
-        aircraft = flight_data.get('aircraft', {})
         
         message += f"🛫 Вылет: {departure.get('airport', 'Неизвестно')} "
         message += f"({departure.get('iata', '?')})\n"
@@ -123,27 +152,20 @@ async def handle_flight_info_request(update: Update, flight_number: str):
             'diverted': '🔄'
         }.get(status, '❓')
         
-        status_translation = {
-            'scheduled': 'по расписанию',
-            'active': 'в полете',
-            'landed': 'приземлился',
-            'cancelled': 'отменен',
-            'incident': 'инцидент',
-            'diverted': 'перенаправлен',
-            'unknown': 'неизвестен'
-        }.get(status, 'неизвестен')
-        
-        message += f"📊 Статус: {status_emoji} {status_translation}\n"
+        message += f"📊 Статус: {status_emoji} {status.capitalize()}\n"
         
         # Дополнительная информация
+        airline = flight_data.get('airline', {})
         if airline.get('name'):
             message += f"🏛️ Авиакомпания: {airline['name']}\n"
         
+        aircraft = flight_data.get('aircraft', {})
         if aircraft.get('iata'):
             message += f"🛩️ Тип ВС: {aircraft['iata']}\n"
         
-        if flight.get('number'):
-            message += f"🔢 Номер рейса: {flight['number']}\n"
+        flight_info = flight_data.get('flight', {})
+        if flight_info.get('number'):
+            message += f"🔢 Номер рейса: {flight_info['number']}\n"
         
         # Информация о задержке
         if departure.get('delay'):
@@ -171,8 +193,17 @@ async def handle_flight_info_request(update: Update, flight_number: str):
                 [InlineKeyboardButton("← Назад", callback_data='back')]
             ])
         )
+    except IndexError:
+        await update.message.reply_text(
+            f"❌ Информация о рейсе {flight_number} не найдена.\n"
+            "Проверьте правильность номера рейса.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("← Попробовать снова", callback_data='flight_info')],
+                [InlineKeyboardButton("← Назад", callback_data='back')]
+            ])
+        )
     except Exception as e:
-        logger.error(f"Ошибка при получении информации о рейсе: {e}")
+        logger.error(f"Ошибка при получении информации о рейсе: {e}", exc_info=True)
         await update.message.reply_text(
             "❌ Произошла ошибка при получении информации о рейсе.\nПопробуйте позже.",
             reply_markup=InlineKeyboardMarkup([

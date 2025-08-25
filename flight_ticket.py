@@ -33,7 +33,6 @@ from price_calendar import handle_price_calendar
 from stats import handle_price_stats
 from airline_routes import show_airline_selection, show_airline_routes
 from flight_info import show_flight_info_menu, handle_flight_info_request
-from telegram import ParseMode
 
 # Настройка логгирования
 logging.basicConfig(

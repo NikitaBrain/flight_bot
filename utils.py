@@ -3,6 +3,7 @@ import requests
 from datetime import datetime
 import pytz
 from config import CITY_SEARCH_URL, AIRLINES_URL, AIRCRAFT_URL
+from datetime import timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -81,38 +82,31 @@ async def get_aircraft_name(aircraft_code: str) -> str:
     return aircraft.get('name', aircraft_code)
 
 def format_date(date_str: str) -> str:
-    """Форматируем дату в дд.мм.гггг чч:мм (правильное время)"""
+    """Форматируем дату в дд.мм.гггг чч:мм (правильное время MSK)"""
     try:
-        # Пробуем разные форматы дат
-        formats = [
-            "%Y-%m-%dT%H:%M:%S%z",  # AviationStack format with timezone
-            "%Y-%m-%dT%H:%M:%S",     # Without timezone
-            "%Y-%m-%d %H:%M:%S",     # Alternative format
-        ]
+        # AviationStack возвращает время в UTC, например: "2025-08-24T18:15:00+00:00"
+        dt = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S%z")
         
-        for fmt in formats:
-            try:
-                dt = datetime.strptime(date_str, fmt)
-                # Если время без timezone, считаем что это UTC
-                if dt.tzinfo is None:
-                    dt = pytz.utc.localize(dt)
-                # Конвертируем в московское время
-                local_tz = pytz.timezone('Europe/Moscow')
-                local_dt = dt.astimezone(local_tz)
-                return local_dt.strftime("%d.%m.%Y %H:%M")
-            except ValueError:
-                continue
+        # Конвертируем UTC в московское время (MSK = UTC+3)
+        msk_tz = pytz.timezone('Europe/Moscow')
+        msk_dt = dt.astimezone(msk_tz)
         
-        return date_str
-    except Exception:
+        return msk_dt.strftime("%d.%m.%Y %H:%M")
+    except Exception as e:
+        logger.error(f"Ошибка форматирования даты {date_str}: {e}")
         return date_str
 
-def format_date(date_str: str) -> str:
-    """Форматируем дату в дд.мм.гггг чч:мм"""
+def format_aviationstack_date(date_str: str) -> str:
+    """Альтернативная функция для AviationStack дат"""
     try:
-        dt = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S%z")
-        local_tz = pytz.timezone('Europe/Moscow')
-        local_dt = dt.astimezone(local_tz)
-        return local_dt.strftime("%d.%m.%Y %H:%M")
-    except:
+        # Убираем timezone информацию и парсим как UTC
+        if '+' in date_str:
+            date_str = date_str.split('+')[0]
+        
+        dt = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S")
+        # Добавляем 3 часа для московского времени
+        dt += timedelta(hours=3)
+        return dt.strftime("%d.%m.%Y %H:%M")
+    except Exception as e:
+        logger.error(f"Ошибка альтернативного форматирования даты {date_str}: {e}")
         return date_str

@@ -120,7 +120,7 @@ async def show_main_menu(update: Update, text: str = None, is_start: bool = Fals
     keyboard = [
         ["🔍 Дешевые билеты", "📅 Календарь цен"],
         ["📊 Статистика цен", "⭐ Избранное"],
-        ["✈️ Популярные рейсы", "ℹ️ Инфо о рейсе"]
+        ["✈️ Популярные рейсы", "ℹ️ Инфо о рейсе"]  # Добавляем новую кнопку
     ]
     reply_markup = ReplyKeyboardMarkup(
         keyboard,
@@ -137,7 +137,8 @@ async def show_main_menu(update: Update, text: str = None, is_start: bool = Fals
                 "❤️ Сохранять направления и уведомлять о изменении цены\n"
                 "📆 Показать лучшие даты для перелета\n"
                 "📈 Поделиться статистикой цен\n"
-                "✈️Показать популярные направления у авиакомпаний\n",
+                "✈️ Показать популярные направления у авиакомпаний\n"
+                "❗️🆕❗️ Получить информацию о конкретном рейсе\n",  
                 reply_markup=reply_markup
             )
         else:
@@ -145,6 +146,15 @@ async def show_main_menu(update: Update, text: str = None, is_start: bool = Fals
                 "Выберите действие:",
                 reply_markup=reply_markup
             )
+    else:
+        # Для callback-запросов оставляем возможность вернуться к главному меню
+        keyboard = [
+            [InlineKeyboardButton("← Назад", callback_data='back')]
+        ]
+        await update.edit_message_text(
+            "Выберите действие:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
     else:
         # Для callback-запросов оставляем возможность вернуться к главному меню
         keyboard = [
@@ -205,13 +215,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         airline_code = choice.split('_')[1]
         await show_airline_routes(update, context, airline_code)
         return
+    
     if choice == 'airline_routes':
         await show_airline_selection(update, context)
         return
-    elif search_type == 'flight_info':
-        from flight_info import handle_flight_info_request
-        await handle_flight_info_request(update, context, text)
     
+    # Обработка кнопок для информации о рейсе
+    if choice == 'flight_info':
+        user_states[user_id] = 'flight_info'
+        from flight_info import show_flight_info_menu
+        await show_flight_info_menu(update, context)
+        return
+    
+    # Обработка других callback данных
     user_states[user_id] = choice
     
     instructions = {
@@ -225,7 +241,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             "Москва Сочи 01.08.2025 10.08.2025"
         ),
         'calendar': "📅 Введите маршрут для календаря цен в формате: <город отправления> <город назначения>",
-        'stats': "📊 Введите маршрут для статистики цен в формате: <город отправления> <город назначения>"
+        'stats': "📊 Введите маршрут для статистики цен в формате: <город отправления> <город назначения>",
+        'flight_info': "✈️ Введите номер рейса в формате: <код авиакомпании><номер рейса> (например: SU1234)"
     }.get(choice, "Выберите тип поиска")
     
     keyboard = [[InlineKeyboardButton("← Назад", callback_data='back')]]
@@ -708,9 +725,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await show_airline_selection(update, context)
     elif text == "ℹ️ Инфо о рейсе":  # Новая кнопка
         user_states[user_id] = 'flight_info'
+        from flight_info import show_flight_info_menu
         await show_flight_info_menu(update, context)
     elif user_id in user_states:
-        search_type = user_states[user_id]
+        search_type = user_states[user_id]  # Теперь переменная определена
         
         if search_type == 'cheap':
             await handle_cheap_tickets(update, text)
@@ -718,7 +736,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await handle_price_calendar(update, text)
         elif search_type == 'stats':
             await handle_price_stats(update, text)
-        elif search_type == 'flight_info':  # Новая обработка
+        elif search_type == 'flight_info':
+            from flight_info import handle_flight_info_request
             await handle_flight_info_request(update, text)
     else:
         await show_main_menu(update)
